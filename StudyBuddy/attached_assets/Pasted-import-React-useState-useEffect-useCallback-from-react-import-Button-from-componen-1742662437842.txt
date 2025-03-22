@@ -1,0 +1,831 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Loader2, AlertCircle, CheckCircle, Code, ListChecks, Settings, Zap, ArrowRightCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
+
+interface APIEndpoint {
+    name: string;
+    value: string;
+    method: 'GET' | 'POST' | 'DELETE';
+    description: string;
+    params: { name: string; type: string; required: boolean; description: string }[];
+    url: string;
+    responseType?: 'json' | 'csv';
+}
+
+//  API data from the provided document, grouped by category
+const apiEndpoints: { [category: string]: APIEndpoint[] } = {
+    'Campaign Management': [
+        {
+            name: 'Create Campaign',
+            value: 'createCampaign',
+            method: 'POST',
+            description: 'Creates a new campaign.',
+            params: [
+                { name: 'name', type: 'string', required: true, description: 'Name of the campaign' },
+                { name: 'client_id', type: 'string', required: false, description: 'Client ID (optional)' },
+            ],
+            url: '/api/v1/campaigns/create',
+        },
+        {
+            name: 'Update Campaign Schedule',
+            value: 'updateCampaignSchedule',
+            method: 'POST',
+            description: 'Updates the schedule of an existing campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/schedule',
+        },
+        {
+            name: 'Update Campaign Settings',
+            value: 'updateCampaignSettings',
+            method: 'POST',
+            description: 'Updates general campaign settings.',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/settings',
+        },
+        {
+            name: 'Get Campaign By Id',
+            value: 'getCampaignById',
+            method: 'GET',
+            description: 'Retrieves campaign details by ID.',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}',
+        },
+        {
+            name: 'Save Campaign Sequence',
+            value: 'saveCampaignSequence',
+            method: 'POST',
+            description: 'Saves the sequence for a campaign.',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'sequences', type: 'array', required: true, description: 'Array of sequence steps' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/sequences',
+        },
+        {
+            name: 'List all Campaigns',
+            value: 'listCampaigns',
+            method: 'GET',
+            description: 'Retrieves a list of all campaigns.',
+            params: [],
+            url: '/api/v1/campaigns',
+        },
+        {
+            name: 'Patch campaign status',
+            value: 'patchCampaignStatus',
+            method: 'POST',
+            description: 'Updates the status of a campaign.',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/status',
+        },
+        {
+            name: 'Fetch Campaign Sequence By Campaign ID',
+            value: 'fetchCampaignSequenceById',
+            method: 'GET',
+            description: 'Fetches the sequence of a campaign by its ID',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/sequences',
+        },
+        {
+            name: 'Fetch all Campaigns Using Lead ID',
+            value: 'fetchCampaignsByLeadId',
+            method: 'GET',
+            description: 'Fetches all campaigns a lead is in.',
+            params: [
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+            ],
+            url: '/api/v1/leads/{lead_id}/campaigns',
+        },
+        {
+            name: 'Export data from a campaign',
+            value: 'exportCampaignData',
+            method: 'GET',
+            description: 'Exports data from a campaign.',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/export',
+            responseType: 'csv',
+        },
+        {
+            name: 'Delete Campaign',
+            value: 'deleteCampaign',
+            method: 'DELETE',
+            description: 'Deletes a campaign.',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}',
+        },
+        {
+            name: 'Fetch Campaign Analytics by Date range',
+            value: 'fetchCampaignAnalyticsByDateRange',
+            method: 'GET',
+            description: 'Retrieves campaign statistics within a specified date range',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'start_date', type: 'string', required: true, description: 'Start date' },
+                { name: 'end_date', type: 'string', required: true, description: 'End date' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/analytics-by-date',
+        },
+        {
+            name: 'Get Campaign Sequence Analytics',
+            value: 'getCampaignSequenceAnalytics',
+            method: 'GET',
+            description: 'Retrieves analytics specific to the sequence of a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/sequence-analytics',
+        },
+    ],
+    'Email Account Management': [
+        {
+            name: 'List all email accounts per campaign',
+            value: 'listEmailAccountsPerCampaign',
+            method: 'GET',
+            description: 'Retrieves all email accounts associated with a specific campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/email-accounts',
+        },
+        {
+            name: 'Add Email Account to a Campaign',
+            value: 'addEmailAccountToCampaign',
+            method: 'POST',
+            description: 'Associates an existing email account with a specified campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/email-accounts',
+        },
+        {
+            name: 'Remove Email Account from a Campaign',
+            value: 'removeEmailAccountFromCampaign',
+            method: 'DELETE',
+            description: 'Disassociates an email account from a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'email_account_id', type: 'string', required: true, description: 'Email Account ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/email-accounts/{email_account_id}',
+        },
+        {
+            name: 'Fetch all email accounts associated to a user',
+            value: 'fetchAllEmailAccounts',
+            method: 'GET',
+            description: 'Retrieves a list of all email accounts associated with the authenticated user',
+            params: [
+                { name: 'offset', type: 'number', required: false, description: 'Pagination offset' },
+                { name: 'limit', type: 'number', required: false, description: 'Pagination limit' },
+            ],
+            url: '/api/v1/email-accounts',
+        },
+        {
+            name: 'Create an Email Account',
+            value: 'createEmailAccount',
+            method: 'POST',
+            description: 'Creates a new email account',
+            params: [
+                { name: 'from_name', type: 'string', required: true, description: 'Sender name' },
+                { name: 'from_email', type: 'string', required: true, description: 'Sender email' },
+                { name: 'user_name', type: 'string', required: true, description: 'Username' },
+                { name: 'password', type: 'string', required: true, description: 'Password' },
+                { name: 'smtp_host', type: 'string', required: true, description: 'SMTP Host' },
+                { name: 'smtp_port', type: 'number', required: true, description: 'SMTP Port' },
+                { name: 'smtp_security', type: 'string', required: true, description: 'SMTP Security (e.g., TLS, SSL)' },
+                { name: 'max_email_per_day', type: 'number', required: false, description: 'Max emails per day' },
+            ],
+            url: '/api/v1/email-accounts/save',
+        },
+        {
+            name: 'Update Email Account',
+            value: 'updateEmailAccount',
+            method: 'POST',
+            description: 'Modifies the settings of an existing email account',
+            params: [
+                { name: 'email_account_id', type: 'string', required: true, description: 'Email account ID' },
+                { name: 'max_email_per_day', type: 'number', required: false, description: 'Max emails per day' },
+                { name: 'custom_tracking_url', type: 'string', required: false, description: 'Custom tracking URL' },
+                { name: 'signature', type: 'string', required: false, description: 'Email signature' },
+            ],
+            url: '/api/v1/email-accounts/{email_account_id}',
+        },
+        {
+            name: 'Fetch Email Account By ID',
+            value: 'fetchEmailAccountById',
+            method: 'GET',
+            description: 'Retrieves the details of a specific email account using its ID',
+            params: [
+                { name: 'account_id', type: 'string', required: true, description: 'Account ID' },
+            ],
+            url: '/api/v1/email-accounts/{account_id}',
+        },
+        {
+            name: 'Add/Update Warmup To Email Account',
+            value: 'addUpdateWarmupToEmailAccount',
+            method: 'POST',
+            description: 'Adds or updates the warmup settings for an email account',
+            params: [
+                { name: 'email_account_id', type: 'string', required: true, description: 'Email account ID' },
+                { name: 'warmup_enabled', type: 'boolean', required: false, description: 'Is warmup enabled?' },
+                { name: 'total_warmup_per_day', type: 'number', required: false, description: 'Total warmup emails per day' },
+                { name: 'daily_rampup', type: 'number', required: false, description: 'Daily rampup value' },
+            ],
+            url: '/api/v1/email-accounts/{email_account_id}/warmup',
+        },
+        {
+            name: 'Reconnect failed email accounts',
+            value: 'reconnectFailedEmailAccounts',
+            method: 'POST',
+            description: 'Attempts to reconnect email accounts that have previously failed',
+            params: [],
+            url: '/api/v1/email-accounts/reconnect',
+        },
+        {
+            name: 'Update Email Account Tag',
+            value: 'updateEmailAccountTag',
+            method: 'POST',
+            description: 'Updates the tag associated with an email account',
+            params: [
+                { name: 'email_account_id', type: 'string', required: true, description: 'Email account ID' },
+                { name: 'tag', type: 'string', required: true, description: 'Tag to add/update' },
+            ],
+            url: '/api/v1/email-accounts/{email_account_id}/tags',
+        },
+    ],
+    'Lead Management': [
+        {
+            name: 'List all leads by Campaign ID',
+            value: 'listLeadsByCampaignId',
+            method: 'GET',
+            description: 'Retrieves all leads for a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'page', type: 'number', required: false, description: 'Page number' },
+                { name: 'limit', type: 'number', required: false, description: 'Number of items per page' },
+                { name: 'filter', type: 'string', required: false, description: 'Filter leads (e.g., by status)' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads',
+        },
+        {
+            name: 'Fetch Lead Categories',
+            value: 'fetchLeadCategories',
+            method: 'GET',
+            description: 'Retrieves available lead categories',
+            params: [],
+            url: '/api/v1/leads/categories',
+        },
+        {
+            name: 'Fetch Lead by email address',
+            value: 'fetchLeadByEmail',
+            method: 'GET',
+            description: 'Retrieves a lead by email',
+            params: [
+                { name: 'email_address', type: 'string', required: true, description: 'Email address' },
+            ],
+            url: '/api/v1/leads/email/{email_address}',
+        },
+        {
+            name: 'Add leads to a campaign by ID',
+            value: 'addLeadsToCampaignById',
+            method: 'POST',
+            description: 'Adds leads to a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'leads', type: 'array', required: true, description: 'Array of lead objects' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads',
+        },
+        {
+            name: 'Resume Lead By Campaign ID',
+            value: 'resumeLeadByCampaignId',
+            method: 'POST',
+            description: 'Resumes a lead in a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads/resume',
+        },
+        {
+            name: 'Pause Lead By Campaign ID',
+            value: 'pauseLeadByCampaignId',
+            method: 'POST',
+            description: 'Pauses a lead in a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads/pause',
+        },
+        {
+            name: 'Delete Lead By Campaign ID',
+            value: 'deleteLeadByCampaignId',
+            method: 'DELETE',
+            description: 'Deletes a lead from a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads/{lead_id}',
+        },
+        {
+            name: 'Unsubscribe/Pause Lead From Campaign',
+            value: 'unsubscribePauseLeadFromCampaign',
+            method: 'POST',
+            description: 'Unsubscribes or pauses a lead',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads/{lead_id}/unsubscribe',
+        },
+        {
+            name: 'Add Lead/Domain to Global Block List',
+            value: 'addLeadDomainToBlockList',
+            method: 'POST',
+            description: 'Adds a lead or domain to the global block list',
+            params: [
+                { name: 'value', type: 'string', required: true, description: 'Email or domain to block' },
+            ],
+            url: '/api/v1/leads/block',
+        },
+        {
+            name: 'Fetch All Leads From Entire Account',
+            value: 'fetchAllLeadsFromAccount',
+            method: 'GET',
+            description: 'Retrieves all leads from the account',
+            params: [
+                { name: 'page', type: 'number', required: false, description: 'Page number' },
+                { name: 'limit', type: 'number', required: false, description: 'Number of items per page' },
+            ],
+            url: '/api/v1/leads/global-leads',
+        },
+        {
+            name: 'Fetch Leads From Global Block List',
+            value: 'fetchLeadsFromBlockList',
+            method: 'GET',
+            description: 'Retrieves leads from the global block list',
+            params: [
+                { name: 'page', type: 'number', required: false, description: 'Page number' },
+                { name: 'limit', type: 'number', required: false, description: 'Number of items per page' },
+            ],
+            url: '/api/v1/leads/get-domain-block-list',
+        },
+        {
+            name: 'Update lead using the Lead ID',
+            value: 'updateLeadByLeadId',
+            method: 'POST',
+            description: 'Updates lead information',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+                { name: 'updates', type: 'object', required: true, description: 'Object containing fields to update' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads/{lead_id}',
+        },
+        {
+            name: 'Update a lead’s category based on their campaign',
+            value: 'updateLeadCategory',
+            method: 'POST', // Or PUT
+            description: 'Updates a lead\'s category',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+                { name: 'category', type: 'string', required: true, description: 'New Category' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads/{lead_id}/category',
+        },
+        {
+            name: 'Fetch Lead Message History Based on Campaign',
+            value: 'fetchLeadMessageHistory',
+            method: 'GET',
+            description: 'Retrieves message history for a lead',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+                { name: 'event_time_gt', type: 'string', required: false, description: 'Filter by event time greater than' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/leads/{lead_id}/message-history',
+        },
+        {
+            name: 'Reply To Lead From Master Inbox via API',
+            value: 'replyToLeadFromMasterInbox',
+            method: 'POST',
+            description: 'Sends a reply to a lead',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+                { name: 'message', type: 'string', required: true, description: 'Message to send' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/reply-email-thread',
+        },
+        {
+            name: 'Forward a Reply',
+            value: 'forwardReply',
+            method: 'POST',
+            description: 'Forwards a reply',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'lead_id', type: 'string', required: true, description: 'Lead ID' },
+                { name: 'to_email', type: 'string', required: true, description: 'Email to forward to' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/reply-email-thread',
+        },
+    ],
+    'Campaign Statistics': [
+        {
+            name: 'Fetch Campaign Statistics By Campaign ID',
+            value: 'fetchCampaignStatisticsById',
+            method: 'GET',
+            description: 'Retrieves statistics for a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'include', type: 'string', required: false, description: 'Include related data (e.g., leads)' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/statistics',
+        },
+        {
+            name: 'Fetch Campaign Statistics By Campaign Id And Date Range',
+            value: 'fetchCampaignStatisticsByDateRange',
+            method: 'GET',
+            description: 'Retrieves campaign statistics by date range',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'start_date', type: 'string', required: true, description: 'Start date' },
+                { name: 'end_date', type: 'string', required: true, description: 'End date' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/analytics-by-date',
+        },
+        {
+            name: 'Fetch campaign top level analytics',
+            value: 'fetchCampaignTopLevelAnalytics',
+            method: 'GET',
+            description: 'Retrieves top-level analytics for a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/analytics',
+        },
+        {
+            name: 'Fetch Campaign Top Level Analytics By Date Range',
+            value: 'fetchCampaignTopLevelAnalyticsByDateRange',
+            method: 'GET',
+            description: 'Retrieves top-level analytics by date range',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+                { name: 'start_date', type: 'string', required: true, description: 'Start date' },
+                { name: 'end_date', type: 'string', required: true, description: 'End date' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/top-level-analytics-by-date',
+        },
+        {
+            name: 'Fetch Campaign Lead Statistics',
+            value: 'fetchCampaignLeadStatistics',
+            method: 'GET',
+            description: 'Retrieves lead-specific statistics',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/lead-statistics',
+        },
+        {
+            name: 'Fetch Campaign Mailbox Statistics',
+            value: 'fetchCampaignMailboxStatistics',
+            method: 'GET',
+            description: 'Retrieves mailbox-specific statistics',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'Campaign ID' },
+            ],
+            url: '/api/v1/campaigns/{campaign_id}/mailbox-statistics',
+        },
+    ],
+    'Webhooks': [
+        {
+            name: 'FetchWebhooks By Campaign ID',
+            value: 'fetchWebhooksByCampaignId',
+            method: 'GET',
+            description: 'Retrieves webhooks for a campaign',
+            params: [
+                { name: 'campaign_id', type: 'string', required: true, description: 'CampaignID' },
+            ],
+            url: '/api/v1/campaigns/<campaign-id>/webhooks',
+        },
+    ]
+};
+
+const SmartleadApp = () => {
+    const [apiKey, setApiKey] = useState<string>(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('smartleadApiKey') || '';
+        }
+        return '';
+    });
+    const [selectedEndpoint, setSelectedEndpoint] = useState<APIEndpoint | null>(null);
+    const [paramValues, setParamValues] = useState<{ [key: string]: string }>({});
+    const [response, setResponse] = useState<string | null>(null);
+    const [loading, setLoading] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+    const [showSettings, setShowSettings] = useState(false);
+
+    // Save API key to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined' && apiKey) {
+            localStorage.setItem('smartleadApiKey', apiKey);
+        }
+    }, [apiKey]);
+
+    const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setApiKey(e.target.value);
+    };
+
+    const handleEndpointSelect = (endpointValue: string) => {
+        let foundEndpoint: APIEndpoint | null = null;
+        for (const category in apiEndpoints) {
+            const endpoint = apiEndpoints[category].find(ep => ep.value === endpointValue);
+            if (endpoint) {
+                foundEndpoint = endpoint;
+                break;
+            }
+        }
+
+        setSelectedEndpoint(foundEndpoint);
+        setParamValues({}); // Reset parameter values when endpoint changes
+        setError(null);    // Clear any previous errors
+        setResponse(null); // Clear previous response
+    };
+
+    const handleParamChange = (paramName: string, value: string) => {
+        setParamValues(prev => ({ ...prev, [paramName]: value }));
+    };
+
+    const constructUrl = useCallback((endpoint: APIEndpoint) => {
+        let url = `https://server.smartlead.ai${endpoint.url}`;
+        const queryParams: string[] = [];
+
+        // Add path parameters (e.g., {campaign_id})
+        endpoint.params.forEach(param => {
+            if (endpoint.url.includes(`{${param.name}}`)) {
+                url = url.replace(`{${param.name}}`, paramValues[param.name] || '');
+            } else if (param.required || paramValues[param.name]) {
+                // Add query parameters
+                queryParams.push(`${param.name}=${encodeURIComponent(paramValues[param.name] || '')}`);
+            }
+        });
+
+        if (queryParams.length > 0) {
+            url += `?${queryParams.join('&')}`;
+        }
+        if (apiKey) {
+            url += url.includes('?') ? `&api_key=${apiKey}` : `?api_key=${apiKey}`;
+        }
+
+        return url;
+    }, [apiKey, paramValues]);
+
+    const makeRequest = async () => {
+        if (!selectedEndpoint) return;
+
+        setLoading(true);
+        setError(null);
+        setResponse(null);
+
+        const url = constructUrl(selectedEndpoint);
+
+        try {
+            const requestOptions: RequestInit = {
+                method: selectedEndpoint.method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            };
+
+            if (selectedEndpoint.method !== 'GET' && Object.keys(paramValues).length > 0) {
+                // Construct the body, filtering out any empty parameter values.
+                const requestBody: { [key: string]: any } = {};
+                selectedEndpoint.params.forEach(param => {
+                    const value = paramValues[param.name];
+                    if (value !== undefined && value !== '') {
+                        requestBody[param.name] = value;
+                    }
+                });
+                requestOptions.body = JSON.stringify(requestBody);
+            }
+
+            const res = await fetch(url, requestOptions);
+
+            if (!res.ok) {
+                const errorData = await res.json(); // Attempt to get JSON error
+                throw new Error(errorData.message || `HTTP error! status: ${res.status}`);
+            }
+
+            let data;
+            if (selectedEndpoint.responseType === 'csv') {
+                data = await res.text(); // Get raw text for CSV
+            } else {
+                data = await res.json();
+            }
+
+            setResponse(JSON.stringify(data, null, 2));
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
+            {/* Navbar */}
+            <nav className="bg-gray-800 p-4 flex items-center justify-between border-b border-gray-700">
+                <div className="flex items-center gap-2">
+                    <Zap className="h-6 w-6 text-yellow-400" />
+                    <h1 className="text-xl font-bold">Smartlead API Explorer</h1>
+                </div>
+                <Button
+                    variant="outline"
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="text-gray-300 hover:text-white hover:bg-gray-700 border-gray-700"
+                >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                </Button>
+            </nav>
+
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col md:flex-row">
+                {/* Sidebar */}
+                <aside className="w-full md:w-64 bg-gray-800 p-4 border-r border-gray-700">
+                    <ScrollArea className="h-[calc(100vh-64px)]">
+                        <AnimatePresence>
+                            {showSettings && (
+                                <motion.div
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: -20 }}
+                                    className="mb-6"
+                                >
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="text-base">API Key</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <Input
+                                                type="text"
+                                                placeholder="Enter your Smartlead API key"
+                                                value={apiKey}
+                                                onChange={handleApiKeyChange}
+                                                className="bg-gray-700 border-gray-600 text-gray-200"
+                                            />
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                        <h2 className="text-lg font-semibold mb-4">API Endpoints</h2>
+                        <div className="space-y-2">
+                            {Object.entries(apiEndpoints).map(([category, endpoints]) => (
+                                <div key={category}>
+                                    <h3 className="text-sm font-medium text-gray-400 mb-1">{category}</h3>
+                                    {endpoints.map(endpoint => (
+                                        <Button
+                                            key={endpoint.value}
+                                            variant={selectedEndpoint?.value === endpoint.value ? 'default' : 'ghost'}
+                                            onClick={() => handleEndpointSelect(endpoint.value)}
+                                            className={cn(
+                                                "w-full text-left",
+                                                selectedEndpoint?.value === endpoint.value
+                                                    ? "bg-gray-700 text-white"
+                                                    : "text-gray-300 hover:text-white hover:bg-gray-700"
+                                            )}
+                                        >
+                                            {endpoint.name}
+                                        </Button>
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    </ScrollArea>
+                </aside>
+
+                {/* Main Content */}
+                <main className="flex-1 p-6">
+                    {selectedEndpoint ? (
+                        <Card className="mb-6">
+                            <CardHeader>
+                                <CardTitle className="text-2xl flex items-center gap-2">
+                                    {selectedEndpoint.name}
+                                    <span className="text-sm font-medium text-gray-400">({selectedEndpoint.method})</span>
+                                    <a
+                                        href={constructUrl(selectedEndpoint)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 hover:text-blue-300 ml-auto flex items-center gap-1"
+                                    >
+                                        <ArrowRightCircle className="h-4 w-4" />
+                                        URL
+                                    </a>
+                                </CardTitle>
+                                <p className="text-gray-400">{selectedEndpoint.description}</p>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="mb-4">
+                                    <h3 className="text-lg font-semibold mb-2">Parameters</h3>
+                                    {selectedEndpoint.params.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {selectedEndpoint.params.map(param => (
+                                                <div key={param.name} className="space-y-1">
+                                                    <label className="block text-sm font-medium text-gray-300">
+                                                        {param.name} <span className="text-gray-400">({param.type})</span>
+                                                        {param.required && <span className="text-red-500">*</span>}
+                                                    </label>
+                                                    <Input
+                                                        type="text"
+                                                        placeholder={param.description}
+                                                        value={paramValues[param.name] || ''}
+                                                        onChange={(e) => handleParamChange(param.name, e.target.value)}
+                                                        className="bg-gray-800 border-gray-700 text-gray-200"
+                                                        disabled={!param.required && !['string', 'number'].includes(param.type)}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-gray-400">No parameters required.</p>
+                                    )}
+                                </div>
+                                <Button
+                                    onClick={makeRequest}
+                                    disabled={loading || !apiKey}
+                                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                                >
+                                    {loading ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Loading...
+                                        </>
+                                    ) : (
+                                        'Make Request'
+                                    )}
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="text-center">
+                            <h2 className="text-2xl font-semibold">Select an Endpoint to Explore</h2>
+                            <p className="text-gray-400">Choose an endpoint from the sidebar to view its details and make a request.</p>
+                        </div>
+                    )}
+
+                    {/* Response Area */}
+                    {response && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-2xl flex items-center gap-2">
+                                    Response
+                                    <Code className="h-5 w-5 text-gray-400" />
+                                </CardTitle>
+
+                            </CardHeader>
+                            <CardContent>
+                                <pre className="bg-gray-800 p-4 rounded-md overflow-auto max-h-96">
+                                    <code className="text-gray-200 font-mono text-sm">{response}</code>
+                                </pre>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Error Area */}
+                    {error && (
+                        <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>Error</AlertTitle>
+                            <AlertDescription>{error}</AlertDescription>
+                        </Alert>
+                    )}
+                </main>
+            </div>
+        </div>
+    );
+};
+
+export default SmartleadApp;
